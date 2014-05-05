@@ -21,10 +21,9 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 public class MainActivity extends Activity {
-
+	private final int timeout = 120;
 	private final int waveinterval = 5;
-	private Runnable sendrunnable;
-	private Runnable quitrunnable;
+	private Runnable sendrunnable, checkrunnable;
 	private final Handler handler = new Handler();
 
 	// for update text
@@ -49,11 +48,12 @@ public class MainActivity extends Activity {
 
 	// fields for audioprocess module
 	static int frequency = 44100; // 接收频率
-	static final int channelConfiguration = AudioFormat.CHANNEL_OUT_MONO;
+	static final int channelConfiguration = AudioFormat.CHANNEL_IN_MONO;
 	static final int audioEncodeing = AudioFormat.ENCODING_PCM_16BIT;
 	int minBufferSize;
 	AudioRecord audioRecord;
 	AudioProcess audioProcess = new AudioProcess();
+	private TextView freqView = null;
 	private TextView numView = null;
 	private TextView logView = null;
 
@@ -91,11 +91,12 @@ public class MainActivity extends Activity {
 		spinner.setVisibility(View.VISIBLE);
 
 		// set the text view
-		numView = (TextView) findViewById(R.id.textView1);
-		numView.setText("网络中机器数：1");
+		freqView = (TextView) findViewById(R.id.textView1);
+		
+		numView = (TextView) findViewById(R.id.textView2);
 
 		logView = (TextView) findViewById(R.id.textView3);
-		logView.setText("本机加入网络\n");
+		
 		// add the button action
 		final Button button = (Button) findViewById(R.id.button1);
 		button.setOnClickListener(new Button.OnClickListener() {
@@ -104,12 +105,18 @@ public class MainActivity extends Activity {
 				if (isworking) {
 					isworking = false;
 					button.setText("加入网络");
+					freqView.setText("请选择本机频率");
+					numView.setText("请加入网络");
+					logView.setText("日志显示");
 					handler.removeCallbacks(sendrunnable);
-					handler.removeCallbacks(quitrunnable);
+					handler.removeCallbacks(checkrunnable);
 					audioProcess.stop();
 				} else {
 					isworking = true;
 					button.setText("离开网络");
+					freqView.setText("本机频率为："+freqid);
+					numView.setText("网络中机器数：1");
+					logView.setText("本机加入网络\n");
 					// 立刻发出第一次信号
 					GenerateWave.send(freqid);
 					// 每n秒发出信号
@@ -124,8 +131,6 @@ public class MainActivity extends Activity {
 					};
 					handler.postDelayed(sendrunnable, 1000 * waveinterval);
 
-					// 每n秒检查一次退出
-					
 					// 接收线程启动
 					try {
 						minBufferSize = AudioRecord.getMinBufferSize(frequency,
@@ -141,14 +146,24 @@ public class MainActivity extends Activity {
 						Log.v("test", "Starting record thread");
 						audioProcess.record_thread.start();
 						Toast.makeText(MainActivity.this,
-								"当前设备支持您所选择的采样率:" + String.valueOf(frequency),
+								"成功加入网络",
 								Toast.LENGTH_SHORT).show();
 					} catch (Exception e) {
 						Toast.makeText(
 								MainActivity.this,
-								"当前设备不支持您所选择的采样率:" + String.valueOf(frequency)
-										+ ",请重新选择", Toast.LENGTH_SHORT).show();
+								"加入网络失败", Toast.LENGTH_SHORT).show();
 					}
+					
+					// 每隔timeout秒检测退出
+					checkrunnable = new Runnable() {
+
+						@Override
+						public void run() {
+							audioProcess.clear();
+							handler.postDelayed(this, 1000 * timeout);
+						}
+					};
+					handler.postDelayed(checkrunnable, 1000 * timeout);
 				}
 			}
 		});
